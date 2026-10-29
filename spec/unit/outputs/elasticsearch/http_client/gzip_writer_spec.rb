@@ -51,6 +51,21 @@ describe LogStash::Outputs::ElasticSearch::HttpClient::GzipWriter do
     expect(io.string).to_not be_empty
   end
 
+  it "writes the trailer and keeps the IO open on #finish, like Zlib::GzipWriter" do
+    lines.each { |line| writer.write(line) }
+
+    expect(writer.finish).to be(io)
+    expect(io).to_not be_closed
+    expect(gunzip(io.string).b).to eq(data.b)
+    expect(writer.pos).to eq(data.bytesize)
+  end
+
+  it "writes compressed data to the IO before #flush once its buffer is full" do
+    lines.each { |line| writer.write(line) }
+
+    expect(io.string).to_not be_empty
+  end
+
   it "writes a valid gzip stream when nothing was written" do
     writer.close
 

@@ -150,6 +150,7 @@ module LogStash; module Outputs; class ElasticSearch;
             UNCOMPRESSED_LENGTH_HEADER => stream_writer.pos.to_s
           }
           bulk_responses << bulk_send(body_stream, batch_actions, headers)
+          stream_writer.finish if compression_level? # frees native memory; truncate drops the trailer it writes
           body_stream.truncate(0) && body_stream.seek(0)
           stream_writer = gzip_writer(body_stream) if compression_level?
           batch_actions.clear

@@ -4,16 +4,20 @@ module LogStash; module Outputs; class ElasticSearch; class HttpClient;
   # Writes a gzip stream (RFC 1952) to a Ruby IO with the JDK's java.util.zip.
   #
   # JRuby implements Zlib::GzipWriter with JZlib, a pure-Java port of zlib.
-  # java.util.zip uses the zlib library that ships with the JDK and a CRC32
-  # that the JIT compiles to CPU instructions, so the same compression level
-  # needs less CPU. The output is ordinary gzip at the same level.
+  # java.util.zip calls the native zlib library, and HotSpot computes its CRC32
+  # with CPU instructions, so the same compression level needs less CPU. The
+  # output is ordinary gzip at the same level.
   #
   # It implements the methods that HttpClient#bulk calls, with the behavior of
   # Zlib::GzipWriter:
   # * #write(string) compresses the bytes of the string and returns their count.
   # * #pos is the number of uncompressed bytes written, also after #close.
   # * #flush sync-flushes the compressed data written so far to the IO.
-  # * #close writes the gzip trailer, closes the IO and returns it.
+  # * #finish writes the gzip trailer and returns the IO without closing it.
+  # * #close does the same as #finish, then closes the IO.
+  #
+  # The compressor holds native memory until #finish or #close frees it. A
+  # writer that is dropped without them frees it when it is garbage collected.
   class GzipWriter
     BUFFER_SIZE = 64 * 1024
     # ID1, ID2, CM (deflate), FLG, MTIME (4 bytes, not set), XFL, OS (unknown)
@@ -38,6 +42,7 @@ module LogStash; module Outputs; class ElasticSearch; class HttpClient;
       @crc.update(bytes, 0, bytes.length)
       @deflater_stream.write(bytes, 0, bytes.length)
       @pos += bytes.length
+      drain if @buffer.size >= BUFFER_SIZE
       bytes.length
     end
 
@@ -47,12 +52,18 @@ module LogStash; module Outputs; class ElasticSearch; class HttpClient;
       self
     end
 
-    def close
+    def finish
       @deflater_stream.finish
-      @deflater.end
       trailer = [@crc.value, @pos & 0xffffffff].pack("VV").to_java_bytes
       @buffer.write(trailer, 0, trailer.length)
       drain
+      @io
+    ensure
+      @deflater.end
+    end
+
+    def close
+      finish
       @io.close
       @io
     end
