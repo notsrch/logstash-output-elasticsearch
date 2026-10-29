@@ -1,6 +1,7 @@
 require "logstash/outputs/elasticsearch"
 require 'logstash/outputs/elasticsearch/http_client/pool'
 require 'logstash/outputs/elasticsearch/http_client/manticore_adapter'
+require 'logstash/outputs/elasticsearch/http_client/gzip_writer'
 require 'cgi'
 require 'zlib'
 require 'stringio'
@@ -181,7 +182,7 @@ module LogStash; module Outputs; class ElasticSearch;
       fail(ArgumentError, "Cannot create gzip writer on IO with unread bytes") unless io.eof?
       fail(ArgumentError, "Cannot create gzip writer on non-empty IO") unless io.pos == 0
 
-      Zlib::GzipWriter.new(io, client_settings.fetch(:compression_level), Zlib::DEFAULT_STRATEGY)
+      GzipWriter.new(io, client_settings.fetch(:compression_level))
     end
 
     def join_bulk_responses(bulk_responses)
